@@ -1,0 +1,100 @@
+@app.get("/customers/config/")
+def get_tenders(request: Request,
+    kpgz_code: str = Query(None),
+    winner_region: str = Query(None),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    inn: str = Query(None),
+    do: str = Query(None),
+    min_price: str = Query(None),
+    max_price: str = Query(None),
+    customers: str = Query(None),
+    win: str = Query(None)
+):
+    # Подключаемся к базе данных
+    conn = sqlite3.connect('tender.db')
+    kpgz_code_UPD = '',
+    winner_region_UPD =  ''
+    start_date_UPD = ''
+    end_date_UPD = ''
+    inn_UPD = ''
+    min_price_upd = ''
+    max_price_upd = ''
+    inn_variant_UPD = ''
+    do_upd = ''
+    concatQUERY = ''
+    customers_upd = ''
+    win_upd = ''
+     
+    kpgz_code_UPD = 'null' if  kpgz_code == None else f'\'{kpgz_code}%\''
+    winner_region_UPD = 'null' if  winner_region == None else f'\'{winner_region}\''
+    start_date_UPD = 'null' if  start_date == None else f'\'{start_date}\''
+    end_date_UPD = 'null' if  end_date == None else f'\'{end_date}\''
+    min_price_upd = 'null' if  min_price == None else f'\'{min_price}\''
+    max_price_upd = 'null' if  max_price == None else f'\'{max_price}\''
+    customers_upd = 'null' if  customers == None else f'\'{customers}\''
+    win_upd = 'null' if  win == None else f'\'{inn}\''
+
+
+    do_upd = 'null' if  do == None else f'\'{do}\''
+
+
+
+
+    query = f'''SELECT 
+        DISTINCT data."Id КС", 
+    CAST(TRIM(REPLACE(REPLACE(trim(data."Конечная цена КС (победителя в КС)"), '\t', ''), CHAR(160), '')) AS DECIMAL(10, 2)) AS "Конечная цена КС (победителя в КС)",
+    CAST(TRIM(REPLACE(REPLACE(trim(data."Начальная цена КС"), '\t' , ''), CHAR(160), '')) AS DECIMAL(10, 2)) AS "Начальная цена КС",
+
+    data."Ссылка на КС", data."ИНН заказчика", data."Наименование заказчика", data."Регион заказчика", 
+    data."Начало КС", data."Окончание КС", data."ИНН победителя КС", data."Наименование победителя КС", data."Регион победителя КС",
+    data."Участники КС - поставщики", data."Код КПГЗ", data."Наименование КПГЗ", 
+        CASE 
+           WHEN "Участники КС - поставщики" LIKE '%{inn}%' THEN 'true'
+           ELSE 'false'
+        END AS "do" 
+        FROM data 
+            WHERE 
+                (data."Код КПГЗ" LIKE {kpgz_code_UPD} OR {kpgz_code_UPD} IS NULL) AND
+                (data."Регион победителя КС" = {winner_region_UPD} OR {winner_region_UPD} IS NULL) AND
+                (data."Окончание КС" BETWEEN {start_date_UPD} AND {end_date_UPD} OR ({start_date_UPD} IS NULL AND {end_date_UPD} IS NULL)) AND 
+                (data."Регион победителя КС" = {winner_region_UPD} OR {winner_region_UPD} IS NULL) AND
+                (data."ИНН победителя КС" = {win_upd} OR {win_upd} IS NULL) AND
+                (CAST(TRIM(REPLACE(REPLACE(data."Конечная цена КС (победителя в КС)", CHAR(9), ''), CHAR(160), '')) AS FLOAT) > {min_price_upd} OR {min_price_upd} IS NULL) AND 
+                (CAST(TRIM(REPLACE(REPLACE(data."Конечная цена КС (победителя в КС)", CHAR(9), ''), CHAR(160), '')) AS FLOAT) < {max_price_upd} OR {max_price_upd} IS NULL) AND
+                (data."ИНН заказчика" = {customers} OR {customers} IS NULL) AND
+
+                (do = {do_upd} OR {do_upd} IS NULL) 
+
+
+        GROUP BY data."Id КС"'''   
+    print(query)
+
+    params = [kpgz_code_UPD, winner_region_UPD, start_date_UPD, end_date_UPD, inn_UPD]
+    print(params)
+    df = pd.read_sql_query(query, conn)
+
+
+    print(df.columns)
+
+    df['diff'] = df['Конечная цена КС (победителя в КС)'] / df['Начальная цена КС']*100-100
+    df['sum_ystupki'] = df['Конечная цена КС (победителя в КС)'] - df['Начальная цена КС']
+    discount = abs(int (df['sum_ystupki'].sum()))
+
+
+    print(discount)
+    total_sum = df['diff'].sum()/df['Id КС'].count()
+    total_sum = df['diff'].sum() / df['Id КС'].count()
+    total_sum_rounded = round(total_sum, 2)
+    print(total_sum)
+    conn.close()
+
+
+
+
+
+
+    return {"KPI_DIFF_PROC": total_sum_rounded,
+            "discount": discount,
+            "data": df.to_dict(orient='records')}
+
